@@ -6,6 +6,11 @@ function hodcode_enqueue_styles()
         'jagame-style-tailwind',
         get_template_directory_uri()
     );
+
+    wp_enqueue_script(
+        'tailwind',
+        "https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4",
+    );
     wp_enqueue_style('hodkode-style', get_stylesheet_uri());
 
     wp_enqueue_script('hodkode-script', get_template_directory_uri() . '/js/script.js', array('jquery'), null, true);
@@ -20,6 +25,8 @@ function hodcode_enqueue_styles()
         'reservation_nonce' => wp_create_nonce('device_reservation_nonce'),
         'game_nets_list_nonce' => wp_create_nonce('game_nets_list_nonce'),
         'reservation_nonce' => wp_create_nonce('reservation_management_nonce'),
+        'mobile_login_nonce' => wp_create_nonce('mobile_login_nonce'), // اضافه شده
+        'sms_verification_nonce' => wp_create_nonce('sms_verification_nonce'),
 
     ));
 }
@@ -2623,5 +2630,416 @@ function user_logout_handler()
 
     wp_send_json_success('خروج موفقیت‌آمیز بود.');
     wp_die();
+}
+
+
+// Ajax برای لاگین با شماره همراه
+add_action('wp_ajax_nopriv_mobile_login', 'mobile_login_handler');
+add_action('wp_ajax_mobile_login', 'mobile_login_handler');
+
+function mobile_login_handler()
+{
+    // بررسی nonce
+    if (!isset($_POST['security']) || !wp_verify_nonce($_POST['security'], 'mobile_login_nonce')) {
+        wp_send_json_error('امنیت نامعتبر است.');
+    }
+
+    $mobile = sanitize_text_field($_POST['mobile']);
+
+    if (empty($mobile)) {
+        wp_send_json_error('شماره همراه را وارد کنید.');
+    }
+
+    // پیدا کردن کاربر با شماره همراه
+    $user = find_user_by_mobile($mobile);
+
+    if ($user) {
+        // کاربر وجود دارد - تشخیص نوع کاربر
+        $user_type = detect_user_type($user->ID);
+
+        // لاگین کاربر
+        wp_clear_auth_cookie();
+        wp_set_current_user($user->ID);
+        wp_set_auth_cookie($user->ID);
+
+        // هدایت بر اساس نوع کاربر
+        if ($user_type == 'game_net_owner') {
+            $redirect_url = home_url('/index.php/overview'); // صفحه گیم نت
+        } else {
+            $redirect_url = home_url('/index.php/userpanel'); // صفحه گیمر
+        }
+
+        wp_send_json_success(array('redirect' => $redirect_url));
+    } else {
+        // کاربر وجود ندارد، ایجاد کاربر جدید با نوع gamer
+        // ابتدا بررسی کنید که این شماره همراه قبلاً به عنوان username استفاده نشده باشد
+        if (username_exists($mobile)) {
+            wp_send_json_error('این شماره همراه قبلاً ثبت شده است. از روش دیگری برای ورود استفاده کنید.');
+        }
+
+        $random_password = wp_generate_password();
+        $user_id = wp_create_user($mobile, $random_password, $mobile . '@example.com');
+
+        if (is_wp_error($user_id)) {
+            wp_send_json_error('خطا در ایجاد کاربر: ' . $user_id->get_error_message());
+        } else {
+            // ذخیره نوع کاربر و شماره موبایل
+            update_user_meta($user_id, 'user_type', 'gamer');
+            update_user_meta($user_id, 'mobile', $mobile);
+
+            // لاگین کاربر
+            wp_clear_auth_cookie();
+            wp_set_current_user($user_id);
+            wp_set_auth_cookie($user_id);
+
+            $redirect_url = home_url('/index.php/userpanel'); // صفحه گیمر
+            wp_send_json_success(array('redirect' => $redirect_url));
+        }
+    }
+}
+
+// تابع برای تشخیص نوع کاربر
+function detect_user_type($user_id)
+{
+    // اول بررسی کنید آیا user_type مشخص شده است
+    $user_type = get_user_meta($user_id, 'user_type', true);
+
+    if (!empty($user_type)) {
+        return $user_type;
+    }
+
+    // اگر user_type مشخص نیست، بر اساس role تشخیص دهید
+    $user = get_userdata($user_id);
+
+    if (in_array('game_net_owner', $user->roles)) {
+        return 'game_net_owner';
+    } elseif (in_array('regular_user', $user->roles)) {
+        return 'gamer';
+    } else {
+        // پیش‌فرض gamer
+        return 'gamer';
+    }
+}
+// پیدا کردن کاربر بر اساس شماره همراه
+function find_user_by_mobile($mobile)
+{
+    $users = get_users([
+        'meta_key' => 'mobile',
+        'meta_value' => $mobile,
+        'number' => 1
+    ]);
+
+    if (!empty($users)) {
+        return $users[0];
+    }
+
+    // اگر با متا پیدا نشد، شاید شماره موبایل به عنوان username ذخیره شده باشد
+    $user_by_username = get_user_by('login', $mobile);
+    if ($user_by_username) {
+        return $user_by_username;
+    }
+
+    return false;
+}
+// ذخیره خودکار شماره موبایل هنگام ایجاد کاربر از پنل وردپرس
+add_action('user_register', 'save_mobile_for_admin_created_users');
+add_action('profile_update', 'save_mobile_for_admin_created_users');
+
+function save_mobile_for_admin_created_users($user_id)
+{
+    // اگر از پنل ادمین وردپرس باشد
+    if (is_admin() && current_user_can('edit_user', $user_id)) {
+        $user = get_userdata($user_id);
+
+        // اگر شماره موبایل به عنوان username استفاده شده، آن را در متا هم ذخیره کن
+        if (preg_match('/^09[0-9]{9}$/', $user->user_login)) {
+            update_user_meta($user_id, 'mobile', $user->user_login);
+        }
+
+        // همچنین اگر فیلد mobile در پروفایل پر شده باشد
+        if (isset($_POST['mobile'])) {
+            update_user_meta($user_id, 'mobile', sanitize_text_field($_POST['mobile']));
+        }
+    }
+}
+// اضافه کردن فیلد شماره موبایل به پروفایل کاربر
+add_action('show_user_profile', 'add_mobile_field_to_profile');
+add_action('edit_user_profile', 'add_mobile_field_to_profile');
+
+function add_mobile_field_to_profile($user)
+{
+?>
+    <h3>اطلاعات تماس</h3>
+    <table class="form-table">
+        <tr>
+            <th><label for="mobile">شماره همراه</label></th>
+            <td>
+                <input type="tel" name="mobile" id="mobile"
+                    value="<?php echo esc_attr(get_the_author_meta('mobile', $user->ID)); ?>"
+                    class="regular-text" pattern="09[0-9]{9}"
+                    placeholder="09xxxxxxxxx">
+                <p class="description">شماره همراه برای ورود از طریق فرم لاگین استفاده می‌شود</p>
+            </td>
+        </tr>
+    </table>
+<?php
+}
+
+// ذخیره فیلد شماره موبایل
+add_action('personal_options_update', 'save_mobile_field');
+add_action('edit_user_profile_update', 'save_mobile_field');
+
+function save_mobile_field($user_id)
+{
+    if (!current_user_can('edit_user', $user_id)) {
+        return false;
+    }
+
+    if (isset($_POST['mobile'])) {
+        update_user_meta($user_id, 'mobile', sanitize_text_field($_POST['mobile']));
+    }
+}
+
+
+
+class SMS_IR_Handler
+{
+    private $api_key;
+    private $line_number;
+
+    public function __construct()
+    {
+        $this->api_key = 'F3hnIz3lfmj3B6W337jIv8zdXJqqCJgM6WzZe1NuPRWZ6k9c'; // کلید API خود را از sms.ir بگیرید
+        $this->line_number = '30001333001265'; // شماره خط خود را وارد کنید
+    }
+
+    public function send_verification_code($mobile, $code)
+    {
+        $url = "https://api.sms.ir/v1/send/verify";
+
+        $data = [
+            'mobile' => $mobile,
+            'templateId' => 559978, // ID قالب پیامک خود را وارد کنید
+            'parameters' => [
+                [
+                    'name' => 'CODE',
+                    'value' => $code
+                ]
+            ]
+        ];
+
+        $args = [
+            'headers' => [
+                'Content-Type' => 'application/json',
+                'X-API-KEY' => $this->api_key
+            ],
+            'body' => json_encode($data),
+            'timeout' => 30
+        ];
+
+        $response = wp_remote_post($url, $args);
+
+        if (is_wp_error($response)) {
+            return false;
+        }
+
+        $body = json_decode(wp_remote_retrieve_body($response), true);
+
+        return isset($body['status']) && $body['status'] == 1;
+    }
+
+    public function send_message($mobile, $message)
+    {
+        $url = "https://api.sms.ir/v1/send/bulk";
+
+        $data = [
+            'lineNumber' => $this->line_number,
+            'messageText' => $message,
+            'mobiles' => [$mobile],
+            'sendDateTime' => null
+        ];
+
+        $args = [
+            'headers' => [
+                'Content-Type' => 'application/json',
+                'X-API-KEY' => $this->api_key
+            ],
+            'body' => json_encode($data),
+            'timeout' => 30
+        ];
+
+        $response = wp_remote_post($url, $args);
+
+        if (is_wp_error($response)) {
+            return false;
+        }
+
+        $body = json_decode(wp_remote_retrieve_body($response), true);
+
+        return isset($body['status']) && $body['status'] == 1;
+    }
+}
+
+// تولید کد تأیید
+function generate_verification_code()
+{
+    return str_pad(mt_rand(0, 999999), 6, '0', STR_PAD_LEFT);
+}
+
+// ذخیره کد تأیید در دیتابیس
+function save_verification_code($mobile, $code)
+{
+    $expires = time() + (10 * 60); // 10 دقیقه اعتبار
+
+    $data = [
+        'code' => $code,
+        'expires' => $expires,
+        'attempts' => 0
+    ];
+
+    update_option('sms_verification_' . $mobile, $data, false);
+}
+
+// بررسی کد تأیید
+function verify_code($mobile, $code)
+{
+    $stored_data = get_option('sms_verification_' . $mobile);
+
+    if (!$stored_data) {
+        return 'کد تأیید منقضی شده است';
+    }
+
+    if (time() > $stored_data['expires']) {
+        delete_option('sms_verification_' . $mobile);
+        return 'کد تأیید منقضی شده است';
+    }
+
+    if ($stored_data['attempts'] >= 5) {
+        delete_option('sms_verification_' . $mobile);
+        return 'تعداد تلاش‌های شما بیش از حد مجاز است';
+    }
+
+    // افزایش تعداد تلاش‌ها
+    $stored_data['attempts']++;
+    update_option('sms_verification_' . $mobile, $stored_data, false);
+
+    if ($stored_data['code'] !== $code) {
+        return 'کد تأیید نادرست است';
+    }
+
+    // کد صحیح است
+    delete_option('sms_verification_' . $mobile);
+    return true;
+}
+
+// ارسال کد تأیید
+add_action('wp_ajax_nopriv_send_verification_code', 'send_verification_code_handler');
+add_action('wp_ajax_send_verification_code', 'send_verification_code_handler');
+
+function send_verification_code_handler()
+{
+    if (!isset($_POST['security']) || !wp_verify_nonce($_POST['security'], 'sms_verification_nonce')) {
+        wp_send_json_error('امنیت نامعتبر است.');
+    }
+
+    $mobile = sanitize_text_field($_POST['mobile']);
+
+    if (empty($mobile) || !preg_match('/^09[0-9]{9}$/', $mobile)) {
+        wp_send_json_error('شماره همراه معتبر نیست.');
+    }
+
+    // بررسی تعداد درخواست‌ها (rate limiting)
+    $last_request = get_option('sms_last_request_' . $mobile);
+    if ($last_request && (time() - $last_request) < 60) {
+        wp_send_json_error('لطفاً ۱ دقیقه صبر کنید و مجدد تلاش کنید.');
+    }
+
+    // تولید کد تأیید
+    $code = generate_verification_code();
+
+    // ارسال پیامک
+    $sms_handler = new SMS_IR_Handler();
+    $sent = $sms_handler->send_verification_code($mobile, $code);
+
+    if ($sent) {
+        // ذخیره کد و زمان آخرین درخواست
+        save_verification_code($mobile, $code);
+        update_option('sms_last_request_' . $mobile, time(), false);
+
+        wp_send_json_success('کد تأیید به شماره شما ارسال شد.');
+    } else {
+        wp_send_json_error('خطا در ارسال پیامک. لطفاً مجدد تلاش کنید.');
+    }
+}
+
+// تأیید کد و لاگین
+add_action('wp_ajax_nopriv_verify_and_login', 'verify_and_login_handler');
+add_action('wp_ajax_verify_and_login', 'verify_and_login_handler');
+
+function verify_and_login_handler()
+{
+    if (!isset($_POST['security']) || !wp_verify_nonce($_POST['security'], 'sms_verification_nonce')) {
+        wp_send_json_error('امنیت نامعتبر است.');
+    }
+
+    $mobile = sanitize_text_field($_POST['mobile']);
+    $code = sanitize_text_field($_POST['code']);
+
+    if (empty($mobile) || empty($code)) {
+        wp_send_json_error('لطفاً شماره همراه و کد تأیید را وارد کنید.');
+    }
+
+    // بررسی کد تأیید
+    $verification_result = verify_code($mobile, $code);
+
+    if ($verification_result !== true) {
+        wp_send_json_error($verification_result);
+    }
+
+    // پیدا کردن یا ایجاد کاربر
+    $user = find_user_by_mobile($mobile);
+
+    if ($user) {
+        // کاربر وجود دارد
+        $user_type = detect_user_type($user->ID);
+
+        // لاگین کاربر
+        wp_clear_auth_cookie();
+        wp_set_current_user($user->ID);
+        wp_set_auth_cookie($user->ID);
+
+        // هدایت بر اساس نوع کاربر
+        if ($user_type == 'game_net_owner') {
+            $redirect_url = home_url('/overview');
+        } else {
+            $redirect_url = home_url('/userpanel');
+        }
+
+        wp_send_json_success(array('redirect' => $redirect_url));
+    } else {
+        // ایجاد کاربر جدید
+        if (username_exists($mobile)) {
+            wp_send_json_error('این شماره همراه قبلاً ثبت شده است.');
+        }
+
+        $random_password = wp_generate_password();
+        $user_id = wp_create_user($mobile, $random_password, $mobile . '@example.com');
+
+        if (is_wp_error($user_id)) {
+            wp_send_json_error('خطا در ایجاد کاربر: ' . $user_id->get_error_message());
+        } else {
+            // ذخیره اطلاعات کاربر
+            update_user_meta($user_id, 'user_type', 'gamer');
+            update_user_meta($user_id, 'mobile', $mobile);
+
+            // لاگین کاربر
+            wp_clear_auth_cookie();
+            wp_set_current_user($user_id);
+            wp_set_auth_cookie($user_id);
+
+            $redirect_url = home_url('/userpanel');
+            wp_send_json_success(array('redirect' => $redirect_url));
+        }
+    }
 }
 ?>

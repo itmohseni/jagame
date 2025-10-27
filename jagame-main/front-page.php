@@ -116,7 +116,7 @@ get_header();
     <div class="container mx-auto px-4 sm:px-6 lg:px-8">
         <h3 class="text-xl sm:text-2xl font-bold text-center mb-6 sm:mb-8">فیلتر کردن گیم نت ها</h3>
         <div class="bg-white rounded-xl shadow-lg p-4 sm:p-6 filter-section">
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 sm:gap-6">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-3">
                 <!-- Gender Filter -->
                 <div>
                     <label class="block text-sm font-semibold mb-2 text-muted">جنسیت</label>
@@ -140,26 +140,26 @@ get_header();
                 </div>
 
                 <!-- Area Filter -->
-                <div>
-                    <label class="block text-sm font-semibold mb-2 text-muted">منطقه</label>
-                    <select id="areaFilter" class="w-full p-2 sm:p-3 text-sm sm:text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent transition-all">
-                        <option value="">همه مناطق</option>
-                        <option value="north">منطقه یک</option>
-                        <option value="south">منطقه دو</option>
-                        <option value="east">منطقه سه</option>
-                    </select>
-                </div>
+                <!--<div>-->
+                <!--    <label class="block text-sm font-semibold mb-2 text-muted">منطقه</label>-->
+                <!--    <select id="areaFilter" class="w-full p-2 sm:p-3 text-sm sm:text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent transition-all">-->
+                <!--        <option value="">همه مناطق</option>-->
+                <!--        <option value="north">منطقه یک</option>-->
+                <!--        <option value="south">منطقه دو</option>-->
+                <!--        <option value="east">منطقه سه</option>-->
+                <!--    </select>-->
+                <!--</div>-->
 
                 <!-- Price Filter -->
-                <div>
-                    <label class="block text-sm font-semibold mb-2 text-muted">قیمت (هزار تومان)</label>
-                    <select id="priceFilter" class="w-full p-2 sm:p-3 text-sm sm:text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent transition-all">
-                        <option value="">همه قیمت ها</option>
-                        <option value="low">کمتر از 40</option>
-                        <option value="medium">40 تا 60</option>
-                        <option value="high">بیشتر از 60</option>
-                    </select>
-                </div>
+                <!--<div>-->
+                <!--    <label class="block text-sm font-semibold mb-2 text-muted">قیمت (هزار تومان)</label>-->
+                <!--    <select id="priceFilter" class="w-full p-2 sm:p-3 text-sm sm:text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent transition-all">-->
+                <!--        <option value="">همه قیمت ها</option>-->
+                <!--        <option value="low">کمتر از 40</option>-->
+                <!--        <option value="medium">40 تا 60</option>-->
+                <!--        <option value="high">بیشتر از 60</option>-->
+                <!--    </select>-->
+                <!--</div>-->
 
                 <!-- Search Button -->
                 <div class="flex items-end sm:col-span-2 lg:col-span-1">
