@@ -267,13 +267,11 @@ function loadGameNets(page = 1) {
     // اضافه کردن فیلترها
     const genderFilter = document.getElementById('genderFilter').value;
     const ageFilter = document.getElementById('ageFilter').value;
-    const areaFilter = document.getElementById('areaFilter').value;
-    const priceFilter = document.getElementById('priceFilter').value;
+
     
     if (genderFilter) formData.append('gender', genderFilter);
     if (ageFilter) formData.append('age', ageFilter);
-    if (areaFilter) formData.append('area', areaFilter);
-    if (priceFilter) formData.append('price', priceFilter);
+
 
     // ارسال درخواست
     fetch(gameNetsAjax.ajax_url, {
@@ -446,12 +444,7 @@ document.getElementById('genderFilter').addEventListener('change', function() {
 document.getElementById('ageFilter').addEventListener('change', function() {
     loadGameNets(1);
 });
-document.getElementById('areaFilter').addEventListener('change', function() {
-    loadGameNets(1);
-});
-document.getElementById('priceFilter').addEventListener('change', function() {
-    loadGameNets(1);
-});
+
 </script>
 
 <?php get_footer(); ?>
